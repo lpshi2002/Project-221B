@@ -1,0 +1,798 @@
+<title>221B 티저</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,700;1,6..96,500&family=Courier+Prime:wght@400;700&family=Nanum+Gothic+Coding:wght@400;700&family=Nanum+Myeongjo:wght@400;800&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --ink:#09090C; --text:#EDE6D6; --gold:#E3B566; --red:#D8483B; --fog:#7D7A84;
+  --display:"Bodoni Moda","Didot","Times New Roman",serif;
+  --myeongjo:"Nanum Myeongjo","AppleMyungjo","Batang",serif;
+  --type:"Courier Prime","Nanum Gothic Coding",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{background:var(--ink);color:var(--text)}
+body{font-family:var(--myeongjo)}
+.page{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:24px 40px;display:grid;gap:14px}
+.stage{position:relative;aspect-ratio:16/9;max-width:100%;overflow:hidden;border-radius:6px;--u:1px;
+  background:radial-gradient(ellipse at 50% 42%,#1A1820 0%,#0F0E12 48%,#060608 100%)}
+.stage > *{position:absolute}
+canvas#film{inset:0;width:100%;height:100%}
+.caption{left:0;right:0;bottom:3.2%;text-align:center;font-weight:800;font-size:calc(var(--u)*34);letter-spacing:.02em;
+  opacity:0;transform:translateY(8px);transition:opacity .8s ease,transform .8s ease;text-shadow:0 2px 14px #000;padding-inline:5%;pointer-events:none}
+.caption.in{opacity:1;transform:none}
+.caption small{display:block;font-family:var(--type);font-weight:400;font-size:.45em;color:var(--fog);margin-top:.5em;letter-spacing:.08em}
+.title{left:0;right:0;top:63%;text-align:center;display:grid;gap:calc(var(--u)*10);opacity:0;transition:opacity 1.6s ease;pointer-events:none}
+.title.in{opacity:1}
+.title .sub{font-weight:800;font-size:calc(var(--u)*30);letter-spacing:.42em;padding-left:.42em}
+.title .tag{font-family:var(--display);font-style:italic;font-weight:500;font-size:calc(var(--u)*27);color:var(--gold)}
+.title .dev{font-family:var(--type);font-size:calc(var(--u)*15);letter-spacing:.3em;color:var(--fog);margin-top:calc(var(--u)*14)}
+.vignette{inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.7) 100%)}
+.bigplay{left:50%;bottom:6%;transform:translateX(-50%);font-family:var(--myeongjo);font-weight:800;font-size:15px;color:var(--ink);background:var(--text);border:0;border-radius:999px;padding:11px 24px;cursor:pointer;box-shadow:0 6px 28px rgba(0,0,0,.6);transition:transform .2s,background .2s;z-index:3}
+.bigplay:hover{background:#fff;transform:translateX(-50%) scale(1.04)}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ctrl{font-family:var(--myeongjo);font-weight:800;font-size:14px;color:var(--text);background:transparent;border:1px solid rgba(237,230,214,.25);border-radius:6px;padding:7px 14px;cursor:pointer}
+.ctrl:hover{border-color:rgba(237,230,214,.6)}
+.ctrl[aria-pressed="false"]{color:var(--fog)}
+.progress{flex:1 1 160px;height:3px;background:rgba(237,230,214,.12);border-radius:2px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--red)}
+.clock{font-family:var(--type);font-size:13px;color:var(--fog);font-variant-numeric:tabular-nums}
+.note{margin:0;font-size:13px;color:var(--fog);line-height:1.6;max-width:70ch}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+</style>
+
+<div class="page">
+  <div class="stage" id="stage" aria-label="221B 티저 필름">
+    <canvas id="film"></canvas>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="title in" id="title">
+      <div class="sub">추리 탐정 AI</div>
+      <div class="tag">Every contact leaves a trace.</div>
+      <div class="dev">PROJECT 221B · 개발 중</div>
+    </div>
+    <div class="vignette"></div>
+    <button class="bigplay" id="bigPlay" type="button">▶ 티저 재생 · 소리 켜짐</button>
+  </div>
+  <div class="controls">
+    <button class="ctrl" id="playBtn" type="button">재생</button>
+    <button class="ctrl" id="soundBtn" type="button" aria-pressed="true">소리 켜짐</button>
+    <div class="progress"><i id="prog"></i></div>
+    <span class="clock" id="clock">0:00 / 1:00</span>
+  </div>
+  <p class="note">사건 정보를 전부 받아 정리하고, 모순을 찾고, 스스로 반박하며 범인을 좁혀 가는 AI. 영상의 입자, 도형, 음악은 모두 코드로 실시간 생성됩니다. 티저 속 사건과 인물은 가상입니다.</p>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const stage = $('stage'), cv = $('film'), ctx = cv.getContext('2d');
+const W = 1600, H = 900;
+
+/* ================= timing (84 BPM, everything on the grid) ================= */
+const BPM = 84, BEAT = 60 / BPM, BAR = BEAT * 4;
+const T = {
+  brushOn: 0.6, brushOff: 6.9,
+  traces: 3 * BAR,               // 8.57
+  timeline: 6 * BAR,             // 17.14
+  clash: 7 * BAR + 2 * BEAT,     // 21.43
+  web: 9 * BAR,                  // 25.71
+  rebut: 11 * BAR + 2 * BEAT,    // 32.86
+  footprint: 12 * BAR,           // 34.29
+  verdict: 14 * BAR,             // 40.00
+  vortex: 16 * BAR,              // 45.71
+  word: 16 * BAR + 2 * BEAT,     // 47.14
+  title: 17 * BAR,               // 48.57
+  end: 21 * BAR,                 // 60.00
+};
+const DURATION = T.end;
+
+/* ================= particles ================= */
+const small = matchMedia('(max-width: 640px)').matches;
+const N = small ? 2200 : 3600, MAIN = Math.floor(N * 0.86);
+const X = new Float32Array(N), Y = new Float32Array(N), VX = new Float32Array(N), VY = new Float32Array(N);
+const TX = new Float32Array(N), TY = new Float32Array(N), A = new Float32Array(N), TA = new Float32Array(N);
+const COL = new Uint8Array(N), MODE = new Uint8Array(N), SP = new Int8Array(N), PH = new Float32Array(N), OFF = new Float32Array(N);
+const OWN = new Int8Array(N).fill(-1);
+const PAL = ['#E3B566', '#EDE6D6', '#D8483B', '#6E6B73', '#8C7446'];
+const GOLD = 0, CREAM = 1, RED = 2, GRAY = 3, DIM = 4;
+const SPRING = 0, STREAM = 1, FREE = 2, VORTEX = 3;
+let K = 0.04, DAMP = 0.84, JIT = 0.25;
+
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const mainIdx = () => shuffle([...Array(MAIN).keys()]);
+
+/* ================= shapes sampled from an offscreen canvas ================= */
+const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+const ox = oc.getContext('2d', {willReadFrequently: true});
+function sample(draw, step = 3, flagFn) {
+  ox.setTransform(1, 0, 0, 1, 0, 0); ox.clearRect(0, 0, W, H);
+  ox.fillStyle = '#fff'; ox.strokeStyle = '#fff'; ox.lineCap = 'round'; ox.lineJoin = 'round';
+  draw(ox);
+  const d = ox.getImageData(0, 0, W, H).data, pts = [];
+  for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step) {
+    if (d[(y * W + x) * 4 + 3] > 120) pts.push([x + Math.random() * step, y + Math.random() * step, flagFn ? flagFn(x, y) : 0]);
+  }
+  return shuffle(pts);
+}
+const S = {};
+function fingerprint(c) {
+  const r = rng(221);
+  c.save(); c.translate(800, 410);
+  c.beginPath(); c.ellipse(0, 0, 215, 275, 0, 0, Math.PI * 2); c.clip();
+  c.lineWidth = 4.2;
+  for (let i = 0; i < 27; i++) {
+    const base = 10 + i * 11, phase = r() * 6;
+    c.beginPath(); let pen = false;
+    for (let a = 0; a <= Math.PI * 2 + 0.02; a += 0.02) {
+      const gap = Math.sin(a * 4 + phase + i * 1.3) > 0.94 || (i > 16 && a > 1.9 && a < 2.5 && i % 3 === 0);
+      const rr = base * (1 + 0.07 * Math.sin(2 * a + i * 0.25) + 0.03 * Math.sin(5 * a + phase));
+      const x = rr * 0.82 * Math.cos(a), y = rr * 1.06 * Math.sin(a) + 5 * Math.sin(x * 0.045 + i);
+      if (gap) { pen = false; continue; }
+      if (!pen) { c.moveTo(x, y); pen = true; } else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+  c.restore();
+}
+const TRACE_POS = [[330, 250], [800, 250], [1270, 250], [330, 600], [800, 600], [1270, 600]];
+const TRACE_DRAW = [
+  c => { // CCTV
+    c.rotate(-0.22); c.fillRect(-95, -32, 150, 64); c.beginPath(); c.arc(62, 0, 30, 0, 7); c.fill();
+    c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.arc(62, 0, 15, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over';
+    c.fillRect(-62, 30, 16, 48); c.fillRect(-100, 76, 92, 12);
+  },
+  c => { // statement bubble
+    c.lineWidth = 9; c.beginPath(); c.roundRect(-105, -70, 210, 115, 26); c.stroke();
+    c.beginPath(); c.moveTo(-40, 45); c.lineTo(-68, 88); c.lineTo(-5, 45); c.fill();
+    c.fillRect(-70, -38, 140, 9); c.fillRect(-70, -14, 110, 9); c.fillRect(-70, 10, 125, 9);
+  },
+  c => { // card
+    c.lineWidth = 8; c.beginPath(); c.roundRect(-112, -70, 224, 140, 16); c.stroke();
+    c.fillRect(-82, -32, 44, 34); for (let i = 0; i < 4; i++) c.fillRect(-82 + i * 42, 30, 30, 8);
+  },
+  c => { // teacup
+    c.beginPath(); c.moveTo(-72, -34); c.lineTo(72, -34); c.quadraticCurveTo(66, 48, 0, 54); c.quadraticCurveTo(-66, 48, -72, -34); c.fill();
+    c.lineWidth = 11; c.beginPath(); c.arc(80, 2, 24, -Math.PI / 2, Math.PI / 2); c.stroke();
+    c.beginPath(); c.ellipse(0, 64, 115, 14, 0, 0, 7); c.fill();
+    c.lineWidth = 6; [-30, 0, 30].forEach(x => { c.beginPath(); c.moveTo(x, -50); c.bezierCurveTo(x - 16, -70, x + 16, -84, x, -104); c.stroke(); });
+  },
+  c => { // footprint
+    c.rotate(0.18); c.beginPath(); c.ellipse(0, -40, 50, 78, 0, 0, 7); c.fill(); c.beginPath(); c.ellipse(4, 78, 38, 44, 0, 0, 7); c.fill();
+    c.globalCompositeOperation = 'destination-out';
+    for (let y = -110; y < 125; y += 13) c.fillRect(-60, y, 120, 5);
+    c.globalCompositeOperation = 'source-over';
+  },
+  c => { // call waveform
+    for (let i = -9; i <= 9; i++) { const h = 12 + 88 * Math.abs(Math.sin(i * 0.7) * Math.cos(i * 0.21)); c.beginPath(); c.roundRect(i * 12 - 4, -h / 2, 8, h, 4); c.fill(); }
+  },
+];
+const AXIS = {x0: 220, x1: 1380, y: 450, min: 90};
+const tx = m => AXIS.x0 + (AXIS.x1 - AXIS.x0) * m / AXIS.min;
+const EVENTS = [ // minutes after 21:00
+  {m: 2, label: 'E-01 CCTV 21:02', up: true},
+  {m: 10, label: 'E-02 진술 “21:10 집”', up: true},
+  {m: 5, label: 'E-03 결제 21:05', up: false},
+  {m: 30, label: 'E-04 수면제 추정 21:30', up: true},
+  {m: 58, label: 'E-05 족적 21:58', up: false},
+  {m: 74, label: 'E-06 통화 22:14', up: true},
+];
+const EV_X = k => 250 + k * 220, EV_Y = 118;
+const SUS = [
+  {name: '조카', x: 365}, {name: '편집자', x: 655}, {name: '가사도우미', x: 945}, {name: '전 동업자', x: 1235},
+];
+const HEAD_Y = 480, SHOULDER_Y = 628, HEAP_BASE = 722;
+function silhouette(c, x) {
+  c.beginPath(); c.arc(x, HEAD_Y, 38, 0, 7); c.fill();
+  c.save(); c.beginPath(); c.rect(x - 100, 520, 200, SHOULDER_Y - 520 + 1); c.clip();
+  c.beginPath(); c.ellipse(x, SHOULDER_Y, 82, 96, 0, 0, 7); c.fill(); c.restore();
+}
+async function buildShapes() {
+  try { await Promise.all([document.fonts.load('700 360px "Bodoni Moda"'), document.fonts.load('400 20px "Courier Prime"'), document.fonts.load('800 20px "Nanum Myeongjo"'), document.fonts.load('400 20px "Nanum Gothic Coding"')]); } catch (_) {}
+  S.fp = sample(fingerprint, 3);
+  S.traces = TRACE_POS.map(([x, y], k) => sample(c => { c.translate(x, y); TRACE_DRAW[k](c); }, 3));
+  S.axis = sample(c => c.fillRect(AXIS.x0, AXIS.y - 2, AXIS.x1 - AXIS.x0, 4), 2);
+  S.dots = EVENTS.map(e => sample(c => { c.beginPath(); c.arc(tx(e.m), AXIS.y, 11, 0, 7); c.fill(); c.fillRect(tx(e.m) - 1.5, e.up ? AXIS.y - 44 : AXIS.y, 3, 44); }, 2));
+  S.ev = EVENTS.map((e, k) => sample(c => { c.beginPath(); c.arc(EV_X(k), EV_Y, 15, 0, 7); c.fill(); }, 2));
+  S.sil = SUS.map(s => sample(c => silhouette(c, s.x), 4));
+  let bStart = 0;
+  S.word = sample(c => {
+    c.font = '700 360px "Bodoni Moda", Didot, serif'; c.textBaseline = 'alphabetic';
+    const w = c.measureText('221B').width, x = 800 - w / 2; bStart = x + c.measureText('221').width;
+    c.fillText('221B', x, 520);
+  }, 3, x => x >= bStart ? 1 : 0);
+}
+
+/* ================= stream paths (evidence → suspect) ================= */
+let paths = [];
+function mkPath(ev, sus, birth) {
+  const p0 = [EV_X(ev), EV_Y + 18], p1 = [SUS[sus].x, HEAD_Y - 42];
+  return {ev, sus, p0, p1, c: [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 - 30], speed: 0.32, alpha: 0, target: 0.85, birth};
+}
+
+/* ================= scene state ================= */
+let hudA = 0, t = 0, playing = false, idle = true, startAt = 0, shake = 0, brush = null, clashK = 0;
+const heapPct = [0, 0, 0, 0], heapShown = [0, 0, 0, 0];
+let heapIdx = [];
+
+function assign(list, pts, col, ta = 0.85) {
+  const n = pts.length;
+  list.forEach((i, j) => { const p = pts[j % n]; TX[i] = p[0] + (Math.random() - 0.5) * 2; TY[i] = p[1] + (Math.random() - 0.5) * 2; MODE[i] = SPRING; COL[i] = col; TA[i] = ta; OWN[i] = -1; SP[i] = -1; });
+}
+function heapTarget(i, s) {
+  const n = Math.max(1, heapPct[s]);
+  const h = 8 + n * 0.95, v = 1 - Math.sqrt(Math.random());
+  TX[i] = SUS[s].x + (Math.random() - 0.5) * 170 * (1 - v); TY[i] = HEAP_BASE - v * h;
+}
+function initAmbient() {
+  for (let i = MAIN; i < N; i++) { X[i] = Math.random() * W; Y[i] = Math.random() * H; VX[i] = (Math.random() - 0.5) * 0.3; VY[i] = (Math.random() - 0.5) * 0.3; MODE[i] = FREE; COL[i] = DIM; A[i] = TA[i] = 0.1 + Math.random() * 0.15; }
+}
+function posterState() {
+  const idx = mainIdx();
+  assign(idx, S.word, CREAM, 0.9);
+  idx.forEach((i, j) => { if (S.word[j % S.word.length][2]) COL[i] = RED; X[i] = TX[i]; Y[i] = TY[i]; A[i] = 0.9; VX[i] = VY[i] = 0; });
+  K = 0.05; paths = [];
+}
+
+const EVENTS_LIST = [];
+const on = (time, fn) => EVENTS_LIST.push({time, fn});
+on(0, () => {
+  K = 0.05; DAMP = 0.8; paths = []; heapIdx = []; heapPct.fill(0); heapShown.fill(0);
+  const idx = mainIdx();
+  assign(idx, S.fp, GOLD, 0);
+  idx.forEach(i => { X[i] = Math.random() * W; Y[i] = Math.random() * H; A[i] = 0; VX[i] = VY[i] = 0; });
+  idx.forEach(i => { X[i] = TX[i]; Y[i] = TY[i]; });
+  cap('모든 접촉은 흔적을 남긴다.', '— 에드몽 로카르, 교환 법칙', 0.8);
+});
+on(T.brushOff, () => { for (let i = 0; i < MAIN; i++) if (TA[i] === 0) { TA[i] = 0.85; } brush = null; });
+on(T.traces - 0.6, () => cap(''));
+on(T.traces, () => {
+  K = 0; DAMP = 0.93;
+  for (let i = 0; i < MAIN; i++) { const dx = X[i] - 800, dy = Y[i] - 410; VX[i] += dx * 0.035 + (Math.random() - 0.5) * 6; VY[i] += dy * 0.035 + (Math.random() - 0.5) * 6; }
+});
+on(T.traces + 0.45, () => {
+  K = 0.03; DAMP = 0.84;
+  const idx = mainIdx(), per = Math.floor(MAIN / 6);
+  for (let g = 0; g < 6; g++) assign(idx.slice(g * per, g === 5 ? MAIN : (g + 1) * per), S.traces[g], g % 2 ? CREAM : GOLD);
+});
+on(T.traces + BAR * 0.4, () => cap('진술. 기록. 감식 결과.', '흩어진 흔적들'));
+on(T.timeline - 0.5, () => cap(''));
+on(T.timeline, () => {
+  K = 0.04;
+  const idx = mainIdx();
+  const nAxis = Math.floor(MAIN * 0.3), nDot = Math.floor(MAIN * 0.07);
+  assign(idx.slice(0, nAxis), S.axis, CREAM, 0.7);
+  for (let k = 0; k < 6; k++) assign(idx.slice(nAxis + k * nDot, nAxis + (k + 1) * nDot), S.dots[k], GOLD, 0.95);
+  idx.slice(nAxis + 6 * nDot).forEach(i => { TX[i] = Math.random() * W; TY[i] = Math.random() * H; MODE[i] = SPRING; COL[i] = DIM; TA[i] = 0.08; });
+  S.dotIdx = [...Array(6)].map((_, k) => idx.slice(nAxis + k * nDot, nAxis + (k + 1) * nDot));
+});
+on(T.timeline + BAR * 0.3, () => cap('시간 위에 겹쳐 놓으면,'));
+on(T.clash, () => {
+  S.dotIdx[1].forEach(i => COL[i] = RED); S.dotIdx[2].forEach(i => COL[i] = RED);
+  shake = 14; clashK = 0.0001; cap('모순이 드러난다.', '21:05 현장 옆 편의점 ↔ 21:10 12km 떨어진 집');
+});
+on(T.web - 0.5, () => cap(''));
+on(T.web, () => {
+  K = 0.035; clashK = 0;
+  const idx = mainIdx();
+  const nSil = Math.floor(MAIN * 0.1), nEv = Math.floor(MAIN * 0.025), nStr = Math.floor(MAIN * 0.045);
+  let o = 0;
+  for (let s = 0; s < 4; s++) { assign(idx.slice(o, o + nSil), S.sil[s], CREAM, 0.55); o += nSil; }
+  S.silIdx = [...Array(4)].map((_, s) => idx.slice(s * nSil, (s + 1) * nSil));
+  S.evIdx = [];
+  for (let k = 0; k < 6; k++) { const l = idx.slice(o, o + nEv); assign(l, S.ev[k], GOLD, 0.95); S.evIdx.push(l); o += nEv; }
+  paths = [mkPath(0, 0, t), mkPath(1, 0, t + 0.3), mkPath(2, 0, t + 0.6), mkPath(3, 2, t + 0.9), mkPath(5, 2, t + 1.2)];
+  S.strIdx = [];
+  paths.forEach((p, pi) => {
+    const l = idx.slice(o, o + nStr); o += nStr; S.strIdx.push(l);
+    l.forEach(i => { MODE[i] = STREAM; SP[i] = pi; PH[i] = Math.random(); OFF[i] = (Math.random() - 0.5) * 12; COL[i] = GOLD; });
+  });
+  heapIdx = idx.slice(o);
+  const shares = [64, 9, 21, 6];
+  let h = 0;
+  shares.forEach((pct, s) => {
+    const n = Math.round(heapIdx.length * pct / 100);
+    heapIdx.slice(h, h + n).forEach(i => { OWN[i] = s; MODE[i] = SPRING; COL[i] = GOLD; TA[i] = 0; });
+    h += n;
+  });
+  heapIdx.slice(h).forEach(i => { OWN[i] = 1; MODE[i] = SPRING; TA[i] = 0; });
+});
+on(T.web + BAR * 0.3, () => cap('모든 흔적을 사람에게 잇고,'));
+on(T.web + BAR, () => { // heaps fill as streams arrive
+  [64, 9, 21, 6].forEach((p, s) => heapPct[s] = p);
+  heapIdx.forEach((i, j) => { const s = OWN[i]; heapTarget(i, s); X[i] = SUS[s].x + (Math.random() - 0.5) * 20; Y[i] = HEAD_Y - 60; TA[i] = 0.9; });
+});
+on(T.rebut, () => {
+  shake = 10; cap('스스로를 반박한다.', '반론 · 결제한 카드는 20:40에 분실 신고됨');
+  const p = paths[2]; p.target = 0;
+  S.strIdx[2].forEach(i => { MODE[i] = FREE; VX[i] = (Math.random() - 0.5) * 7; VY[i] = (Math.random() - 0.5) * 7 - 2; COL[i] = GRAY; TA[i] = 0; });
+  S.evIdx[2].forEach(i => { COL[i] = GRAY; TA[i] = 0.35; });
+  const move = Math.round(heapIdx.length * 0.37); let moved = 0;
+  heapPct[0] = 27; heapPct[2] = 58;
+  heapIdx.forEach(i => {
+    if (OWN[i] === 0 && moved < move) { OWN[i] = 2; COL[i] = RED; moved++; VY[i] -= 9 + Math.random() * 6; }
+    if (OWN[i] === 0 || OWN[i] === 2) heapTarget(i, OWN[i]);
+  });
+});
+on(T.rebut + 1.6, () => heapIdx.forEach(i => { if (COL[i] === RED) COL[i] = GOLD; }));
+on(T.footprint, () => {
+  paths.push(mkPath(4, 2, t));
+  const pi = paths.length - 1;
+  S.strIdx[2].forEach(i => { MODE[i] = STREAM; SP[i] = pi; PH[i] = Math.random(); OFF[i] = (Math.random() - 0.5) * 12; COL[i] = RED; });
+});
+on(T.verdict - 0.5, () => cap(''));
+on(T.verdict, () => {
+  [0, 1, 3].forEach(s => S.silIdx[s].forEach(i => TA[i] = 0.1));
+  S.silIdx[2].forEach(i => { COL[i] = RED; TA[i] = 0.95; });
+  [0, 1, 2].forEach(k => S.evIdx[k].forEach(i => TA[i] = 0.15));
+  paths.forEach(p => { if (p.sus !== 2) p.target = 0.08; });
+  heapIdx.forEach(i => { if (OWN[i] !== 2) TA[i] = 0.25; });
+  shake = 4;
+});
+on(T.verdict + BEAT, () => cap('범인을 단정하지 않는다. 근거를 댄다.'));
+on(T.vortex - 0.4, () => cap(''));
+on(T.vortex, () => {
+  paths = [];
+  for (let i = 0; i < MAIN; i++) { MODE[i] = VORTEX; COL[i] = i % 5 === 0 ? CREAM : GOLD; TA[i] = 0.75; OWN[i] = -1; }
+});
+on(T.word, () => {
+  K = 0.028; DAMP = 0.86;
+  const idx = mainIdx();
+  assign(idx, S.word, CREAM, 0.92);
+  idx.forEach((i, j) => { if (S.word[j % S.word.length][2]) COL[i] = RED; });
+});
+on(T.word + 1.2, () => { K = 0.06; });
+on(T.title, () => { $('title').classList.add('in'); shake = 6; });
+on(T.end, () => finish());
+EVENTS_LIST.sort((a, b) => a.time - b.time);
+
+/* ================= overlays drawn on canvas ================= */
+const MONO = '"Courier Prime","Nanum Gothic Coding",monospace', SERIF = '"Nanum Myeongjo",serif';
+const OVER = [];
+const over = (from, to, fn) => OVER.push({from, to, fn});
+/* --- AI reading raw documents --- */
+const DOCS = [
+  ['조카 진술: 그날 밤 21시 10분엔 집에 있었어요', '21시 10분'], ['편집자 진술: 원고 마감 문제로 통화한 적 있음'],
+  ['카드 승인 21:05 ○○편의점 4,200원 (조카 명의)', '21:05'], ['감식: 서재 문 안쪽 잠금, 열쇠는 책상 위'],
+  ['감식 소견: 찻잔 잔여물에서 수면제 성분 검출', '수면제'], ['전 동업자: 지난달 이후 연락한 적 없음'],
+  ['창틀 외부 족적 1점, 길이 270mm, 뒷마당 흙', '270mm'], ['결제 내역 20:12 약국 · 9,800원'],
+  ['발신 피해자 → 수신 가사도우미 22:14 · 38초', '22:14'], ['가사도우미 진술: 21시에 퇴근했습니다'],
+  ['CCTV 현관 21:02 후드티 착용 인물 진입', '21:02'], ['피해자 혈중 알코올 0.02%'],
+  ['기지국 A-17 접속 21:03 ~ 21:41'], ['감식: 서재 바닥 흙 부스러기 소량'],
+];
+over(T.traces + 0.1, T.traces + 3.4, a => {
+  const e = t - T.traces;
+  ctx.save(); ctx.font = `400 16px ${MONO}`; ctx.textBaseline = 'middle';
+  [150, 620, 1090].forEach((cx, col) => {
+    for (let r = 0; r < 34; r++) {
+      const y = 900 - ((e * (260 + col * 40) + r * 30) % 1020);
+      const d = DOCS[(r * 3 + col * 5) % DOCS.length];
+      ctx.globalAlpha = a * 0.3; ctx.fillStyle = PAL[CREAM]; ctx.fillText(d[0], cx, y);
+      if (d[1] && y > 120 && y < 800) {
+        const pre = d[0].indexOf(d[1]), x0 = cx + ctx.measureText(d[0].slice(0, pre)).width, w = ctx.measureText(d[1]).width;
+        ctx.globalAlpha = a; ctx.strokeStyle = PAL[GOLD]; ctx.lineWidth = 1.5; ctx.strokeRect(x0 - 4, y - 12, w + 8, 24);
+        ctx.fillStyle = PAL[GOLD]; ctx.fillText(d[1], x0, y);
+      }
+    }
+  });
+  ctx.restore();
+});
+/* --- trace read-outs (what the AI concluded about each object) --- */
+const READOUT = ['E-01 CCTV ▸ 인물 1 · 21:02 · 신뢰도 0.71', 'E-02 진술 ▸ 조카 “21:10 집” · 신뢰도 0.91', 'E-03 결제 ▸ 21:05 · 현장 옆 · 조카 명의', 'E-04 찻잔 ▸ 수면제 성분 · 지문 1점', 'E-05 족적 ▸ 270mm 작업화 · 뒷마당 흙', 'E-06 통화 ▸ 22:14 · 가사도우미 · 38초'];
+TRACE_POS.forEach(([x, y], k) => over(T.traces + 3.2 + k * 0.42, T.timeline - 0.3, a => {
+  const e = t - (T.traces + 3.2 + k * 0.42), txt = READOUT[k], n = Math.floor(e * 45);
+  label(txt.slice(0, n), x, y + 150, 19, n < txt.length ? PAL[GOLD] : PAL[CREAM], a, MONO);
+}));
+/* --- rapid pairwise cross-checks on the timeline --- */
+const PAIRS = []; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) if (!(i === 1 && j === 2)) PAIRS.push([i, j]);
+over(T.timeline + 1.2, T.clash, a => {
+  const idx = Math.floor((t - T.timeline - 1.2) / 0.11);
+  for (let b = 0; b < 3; b++) {
+    const [i, j] = PAIRS[(idx - b + PAIRS.length * 9) % PAIRS.length], x1 = tx(EVENTS[i].m), x2 = tx(EVENTS[j].m);
+    ctx.save(); ctx.globalAlpha = a * (0.7 - b * 0.22); ctx.strokeStyle = PAL[CREAM]; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x1, AXIS.y); ctx.quadraticCurveTo((x1 + x2) / 2, AXIS.y - 60 - Math.abs(x2 - x1) * 0.25, x2, AXIS.y); ctx.stroke(); ctx.restore();
+  }
+});
+/* --- the AI's point of attention --- */
+const FOCUS = [
+  [T.traces + 3.0, 330, 250, 170], [T.traces + 3.5, 800, 250, 170], [T.traces + 3.9, 1270, 250, 170],
+  [T.traces + 4.3, 330, 600, 170], [T.traces + 4.7, 800, 600, 170], [T.traces + 5.1, 1270, 600, 170], [T.traces + 7.6, 800, 430, 600],
+  [T.timeline + 1.0, tx(0), AXIS.y, 90], [T.clash - 0.2, tx(88), AXIS.y, 90], [T.clash + 0.15, (tx(5) + tx(10)) / 2, AXIS.y - 40, 120], [T.web - 0.3, (tx(5) + tx(10)) / 2, AXIS.y - 40, 120],
+  [T.web + 0.8, 800, 330, 700], [T.web + 3.4, SUS[0].x, 560, 190], [T.rebut - 0.6, EV_X(2), EV_Y, 70], [T.rebut + 1.2, EV_X(2), EV_Y, 70],
+  [T.footprint + 0.3, EV_X(4), EV_Y, 70], [T.footprint + 1.6, SUS[2].x, 560, 190], [T.verdict + 0.2, SUS[2].x, 570, 230], [T.vortex - 0.3, SUS[2].x, 570, 230],
+];
+function focusAt() {
+  if (t < FOCUS[0][0] || t > FOCUS[FOCUS.length - 1][0]) return null;
+  let i = 0; while (i < FOCUS.length - 2 && FOCUS[i + 1][0] < t) i++;
+  const [t0, x0, y0, s0] = FOCUS[i], [t1, x1, y1, s1] = FOCUS[i + 1];
+  let u = Math.min(1, Math.max(0, (t - t0) / Math.min(0.45, t1 - t0))); u = u * u * (3 - 2 * u);
+  return [x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, s0 + (s1 - s0) * u, u];
+}
+over(T.traces + 3.0, T.vortex - 0.2, a => {
+  const f = focusAt(); if (!f) return;
+  const [x, y, s, u] = f, h = s / 2, L = Math.max(14, s * 0.16), pulse = u < 1 ? 1 : 0.75 + 0.25 * Math.sin(t * 9);
+  ctx.save(); ctx.globalAlpha = a * pulse; ctx.strokeStyle = PAL[GOLD]; ctx.lineWidth = 2;
+  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => {
+    ctx.beginPath(); ctx.moveTo(x + sx * h, y + sy * (h - L)); ctx.lineTo(x + sx * h, y + sy * h); ctx.lineTo(x + sx * (h - L), y + sy * h); ctx.stroke();
+  });
+  ctx.lineWidth = 1; ctx.globalAlpha = a * 0.5;
+  ctx.beginPath(); ctx.moveTo(x - 8, y); ctx.lineTo(x + 8, y); ctx.moveTo(x, y - 8); ctx.lineTo(x, y + 8); ctx.stroke();
+  ctx.restore();
+});
+over(T.traces + 1, T.verdict + 5.6, a => label('CASE 0921 · 잠긴 서재', 60, 62, 18, PAL[GRAY], a, MONO, 'left'));
+over(T.timeline + 0.8, T.web - 0.3, a => {
+  ['21:00', '21:30', '22:00', '22:30'].forEach((s, i) => label(s, tx(i * 30), AXIS.y + 44, 17, PAL[GRAY], a, MONO));
+  EVENTS.forEach((e, k) => {
+    const x = tx(e.m) + (k === 2 ? 8 : k === 0 ? -12 : 0);
+    label(e.label, x, e.up ? AXIS.y - 58 - (k === 1 ? 34 : 0) : AXIS.y + 82 + (k === 2 ? 0 : 0), 18, k === 1 || k === 2 ? (t > T.clash ? PAL[RED] : PAL[CREAM]) : PAL[CREAM], a, MONO);
+  });
+});
+over(T.clash, T.web - 0.3, a => {
+  const x1 = tx(5), x2 = tx(10), k = Math.min(1, (t - T.clash) / 0.6);
+  ctx.save(); ctx.globalAlpha = a; ctx.strokeStyle = PAL[RED]; ctx.lineWidth = 2.5; ctx.setLineDash([8, 6]);
+  ctx.beginPath(); for (let s = 0; s <= k; s += 0.02) { const u = s, bx = (1 - u) * (1 - u) * x1 + 2 * u * (1 - u) * ((x1 + x2) / 2) + u * u * x2, by = (1 - u) * (1 - u) * (AXIS.y - 14) + 2 * u * (1 - u) * (AXIS.y - 190) + u * u * (AXIS.y - 14); s === 0 ? ctx.moveTo(bx, by) : ctx.lineTo(bx, by); } ctx.stroke(); ctx.restore();
+  label('5분 만에 12km?', (x1 + x2) / 2 + 150, AXIS.y - 150, 26, PAL[RED], a * k, SERIF, 'left', 800);
+});
+over(T.web + 0.4, T.vortex - 0.2, a => {
+  ['CCTV', '진술', '결제', '찻잔', '족적', '통화'].forEach((s, k) => {
+    const dimmed = t > T.verdict ? k < 3 : k === 2 && t > T.rebut;
+    label(`E-0${k + 1} ${s}`, EV_X(k), EV_Y - 34, 17, dimmed ? PAL[GRAY] : PAL[CREAM], a * (dimmed ? 0.6 : 1), MONO);
+  });
+  SUS.forEach((s, k) => {
+    heapShown[k] += (heapPct[k] - heapShown[k]) * 0.06;
+    const lead = t > T.verdict && k === 2, dim = t > T.verdict && k !== 2;
+    label(s.name, s.x, HEAP_BASE + 40, 22, lead ? PAL[RED] : PAL[CREAM], a * (dim ? 0.4 : 1), SERIF, 'center', 800);
+    if (t > T.web + BAR) label(Math.max(0, Math.round(heapShown[k] + jitter() * (k === 1 || k === 3 ? 0.4 : 1))) + '%', s.x, HEAP_BASE + 70, 18, lead ? PAL[RED] : PAL[GOLD], a * (dim ? 0.4 : 1), MONO);
+  });
+});
+over(T.rebut, T.verdict - 0.2, a => box('반론 검사 ▸ E-03의 카드는 20:40에 분실 신고됨 · 결제자 = 조카? 근거 없음', 800, 300, a, PAL[RED]));
+over(T.footprint + 0.6, T.verdict - 0.2, a => label('E-05 족적 270mm = 가사도우미 작업화 사이즈', 800, 356, 18, PAL[GOLD], a, MONO));
+over(T.verdict + 0.3, T.vortex - 0.2, a => {
+  box('가장 유력 · 가사도우미 58%   근거 E-04 · E-05 · E-06', 800, 290, a, PAL[GOLD]);
+  label('남은 의문 · 동기 미확인 → 추가 수사 필요', 800, 346, 18, PAL[CREAM], a * 0.85, MONO);
+});
+function jitter() {
+  const w = [[T.web + BAR, 1.5], [T.rebut + 0.2, 1.2], [T.footprint + 1.4, 1.1]].find(([s, d]) => t > s && t < s + d);
+  return w ? (Math.random() - 0.5) * 22 * (1 - (t - w[0]) / w[1]) : 0;
+}
+function label(text, x, y, size, color, a, font, align = 'center', weight = 400) {
+  if (a <= 0.01) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = color; ctx.font = `${weight} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 8; ctx.fillText(text, x, y); ctx.restore();
+}
+function box(text, x, y, a, color) {
+  if (a <= 0.01) return;
+  ctx.save(); ctx.font = `700 22px ${MONO}`; const w = ctx.measureText(text).width + 44;
+  ctx.globalAlpha = a * 0.82; ctx.fillStyle = '#09090C'; ctx.fillRect(x - w / 2, y - 24, w, 48);
+  ctx.globalAlpha = a; ctx.fillStyle = color; ctx.fillRect(x - w / 2, y - 24, 4, 48);
+  ctx.strokeStyle = color; ctx.globalAlpha = a * 0.4; ctx.strokeRect(x - w / 2 + 0.5, y - 23.5, w - 1, 47);
+  ctx.restore(); label(text, x + 2, y + 1, 22, color, a, MONO, 'center', 700);
+}
+
+/* ================= DOM caption ================= */
+function cap(text, small, delay = 0) {
+  const c = $('caption');
+  c.classList.remove('in');
+  if (!text) return;
+  setTimeout(() => { if (!playing) return; c.innerHTML = text + (small ? `<small>${small}</small>` : ''); c.classList.add('in'); }, 350 + delay * 1000);
+}
+
+/* ================= physics + render ================= */
+function bez(p, s) {
+  const u = 1 - s;
+  return [u * u * p.p0[0] + 2 * u * s * p.c[0] + s * s * p.p1[0], u * u * p.p0[1] + 2 * u * s * p.c[1] + s * s * p.p1[1]];
+}
+function step() {
+  if (brush) {
+    const u = Math.min(1, Math.max(0, (t - T.brushOn) / (T.brushOff - T.brushOn)));
+    brush.x = 800 + 250 * Math.sin(u * Math.PI * 5.5) * (1 - u * 0.25); brush.y = 120 + u * 580;
+    for (let i = 0; i < MAIN; i++) {
+      if (TA[i] !== 0) continue;
+      const dx = TX[i] - brush.x, dy = TY[i] - brush.y;
+      if (dx * dx + dy * dy < 120 * 120) { TA[i] = 0.85; X[i] = TX[i] + (Math.random() - 0.5) * 50; Y[i] = TY[i] - Math.random() * 45; VX[i] = VY[i] = 0; }
+    }
+  }
+  paths.forEach(p => { p.alpha += ((t > p.birth ? p.target : 0) - p.alpha) * 0.05; });
+  for (let i = 0; i < N; i++) {
+    const m = MODE[i];
+    if (m === SPRING) {
+      VX[i] = (VX[i] + (TX[i] - X[i]) * K) * DAMP + (Math.random() - 0.5) * JIT;
+      VY[i] = (VY[i] + (TY[i] - Y[i]) * K) * DAMP + (Math.random() - 0.5) * JIT;
+      X[i] += VX[i]; Y[i] += VY[i];
+      A[i] += (TA[i] - A[i]) * 0.07;
+    } else if (m === STREAM) {
+      const p = paths[SP[i]]; if (!p) { MODE[i] = FREE; continue; }
+      const s = (PH[i] + t * p.speed) % 1, [bx, by] = bez(p, s), [cx, cy] = bez(p, Math.min(1, s + 0.01));
+      const nx = -(cy - by), ny = cx - bx, nl = Math.hypot(nx, ny) || 1;
+      X[i] = bx + nx / nl * OFF[i]; Y[i] = by + ny / nl * OFF[i];
+      A[i] = p.alpha * Math.sin(Math.PI * s);
+    } else if (m === FREE) {
+      VX[i] = VX[i] * 0.985 + (Math.random() - 0.5) * 0.06; VY[i] = VY[i] * 0.985 + (Math.random() - 0.5) * 0.06;
+      X[i] += VX[i]; Y[i] += VY[i];
+      if (X[i] < 0) X[i] += W; if (X[i] > W) X[i] -= W; if (Y[i] < 0) Y[i] += H; if (Y[i] > H) Y[i] -= H;
+      A[i] += (TA[i] - A[i]) * 0.04;
+    } else if (m === VORTEX) {
+      const dx = X[i] - 800, dy = Y[i] - 420, r = Math.hypot(dx, dy) + 1;
+      const pull = r > 260 ? 0.035 : -0.01;
+      VX[i] = VX[i] * 0.9 + (-dy / r) * 2.2 - dx / r * pull * r * 0.05;
+      VY[i] = VY[i] * 0.9 + (dx / r) * 2.2 - dy / r * pull * r * 0.05;
+      X[i] += VX[i]; Y[i] += VY[i];
+      A[i] += (TA[i] - A[i]) * 0.05;
+    }
+  }
+}
+
+/* ================= HUD: the engine at work ================= */
+const LOG = [
+  [T.traces + 0.3, '자료 수신 · 진술 38 · 감식 6 · 기록 12,480줄'],
+  [T.traces + 0.9, '판독 · 개체 인식 · 시간 정규화'],
+  [T.traces + 1.6, '사실 추출 ‘21:10 집’ ← 진술(조카)'],
+  [T.traces + 2.1, '사실 추출 ‘21:05 결제’ ← 카드사'],
+  [T.traces + 2.6, '사실 추출 ‘수면제 성분’ ← 감식(찻잔)'],
+  [T.traces + 3.1, '사실 추출 ‘족적 270mm’ ← 감식(창틀)'],
+  [T.traces + 3.6, '사실 추출 ‘22:14 통화 38초’ ← 통신사'],
+  [T.traces + 5.8, '증거 6건 등록 · 출처 연결 완료', 'ok'],
+  [T.timeline + 0.2, '타임라인 통합 · 이벤트 6 · 인물 4'],
+  [T.timeline + 1.0, '교차 대조 · 사실 142 × 142'],
+  [T.timeline + 1.8, 'E-01 × E-02 · 일치'],
+  [T.timeline + 2.3, 'E-01 × E-03 · 일치'],
+  [T.timeline + 2.8, 'E-02 × E-04 · 무관'],
+  [T.timeline + 3.3, 'E-04 × E-06 · 약한 연관'],
+  [T.clash, '충돌 E-02×E-03 · 5분에 12km 불가', 'bad'],
+  [T.clash + 1.0, '조카 진술 신뢰도 0.91 → 0.22', 'bad'],
+  [T.web + 0.2, '가설 생성 · 수단 · 동기 · 기회'],
+  [T.web + 1.2, 'H1 조카 ← E-01 E-02 E-03 · 0.64'],
+  [T.web + 1.8, 'H2 가사도우미 ← E-04 E-06 · 0.21'],
+  [T.web + 2.4, 'H3 편집자 0.09 · H4 전 동업자 0.06'],
+  [T.web + 3.6, '반증 · 최유력 가설 H1 공격', 'gold'],
+  [T.web + 4.4, '질문 · E-03 결제자가 정말 조카인가?'],
+  [T.web + 5.6, '조회 · 카드사 분실 신고 기록'],
+  [T.rebut, '발견 · 20:40 분실 신고 → E-03 무효', 'bad'],
+  [T.rebut + 0.8, 'H1 0.64 → 0.27', 'bad'],
+  [T.footprint, '재탐색 · 연결 안 된 증거 E-05'],
+  [T.footprint + 0.8, 'E-05 270mm ↔ 가사도우미 작업화', 'ok'],
+  [T.footprint + 1.6, 'H2 0.21 → 0.58', 'ok'],
+  [T.verdict, '결론 · H2 가사도우미 0.58', 'gold'],
+  [T.verdict + 0.8, '근거 E-04·E-05·E-06 · 반대 증거 없음'],
+  [T.verdict + 1.6, '미해결 · 동기 → 추가 수사 권고'],
+  [T.verdict + 2.6, '판단은 수사관에게 · 보고서 생성', 'ok'],
+];
+const PHASES = [[T.traces, '자료 판독'], [T.traces + 1.5, '사실 추출'], [T.timeline, '교차 검증'], [T.web, '가설 평가'], [T.web + 3.6, '반증'], [T.verdict, '결론']];
+const ramp = (a, b, v0, v1) => t <= a ? v0 : t >= b ? v1 : v0 + (v1 - v0) * (1 - Math.pow(1 - (t - a) / (b - a), 2));
+function drawHUD(a) {
+  const x0 = 1196, x1 = 1572, y0 = 58, y1 = 842, colOf = k => k === 'bad' ? PAL[RED] : k === 'gold' ? PAL[GOLD] : k === 'ok' ? '#9BC79A' : PAL[CREAM];
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(9,9,12,.78)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.fillStyle = PAL[GOLD]; ctx.fillRect(x0, y0, 2, y1 - y0);
+  ctx.restore();
+  const L = (txt, x, y, size, color, align = 'left', weight = 400, font = MONO, alpha = 1) => {
+    ctx.save(); ctx.globalAlpha = a * alpha; ctx.fillStyle = color; ctx.font = `${weight} ${size}px ${font}`; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y); ctx.restore();
+  };
+  L('221B', x0 + 22, y0 + 30, 26, PAL[CREAM], 'left', 700, '"Bodoni Moda",serif');
+  const live = Math.sin(t * 6) > 0;
+  ctx.save(); ctx.globalAlpha = a * (live ? 1 : 0.35); ctx.fillStyle = PAL[RED]; ctx.beginPath(); ctx.arc(x1 - 92, y0 + 30, 5, 0, 7); ctx.fill(); ctx.restore();
+  L('분석 중', x1 - 80, y0 + 31, 15, PAL[CREAM]);
+  const phase = PHASES.filter(p => t >= p[0]).pop();
+  L('▸ ' + (phase ? phase[1] : '대기'), x0 + 22, y0 + 68, 17, PAL[GOLD], 'left', 700);
+  L('경과 ' + Math.max(0, t - T.traces).toFixed(1) + 's', x1 - 20, y0 + 68, 14, PAL[GRAY], 'right');
+
+  const facts = Math.round(ramp(T.traces + 1.5, T.timeline, 0, 142));
+  const pairs = Math.round(ramp(T.timeline + 1.0, T.clash + 1.5, 0, 10011));
+  const hyp = Math.round(t < T.rebut ? ramp(T.web + 0.3, T.web + 3, 0, 24) : ramp(T.rebut, T.footprint + 1.6, 24, 31));
+  const rows = [['판독한 문서', Math.round(ramp(T.traces + 0.2, T.traces + 3.2, 0, 56))], ['추출한 사실', facts], ['사실 간 대조', pairs], ['검토한 가설', hyp]];
+  rows.forEach(([k, v], i) => {
+    const y = y0 + 112 + i * 30;
+    L(k, x0 + 22, y, 15, PAL[GRAY]);
+    L(v.toLocaleString('ko-KR'), x1 - 20, y, 17, PAL[CREAM], 'right', 700);
+  });
+  ctx.save(); ctx.globalAlpha = a * 0.25; ctx.fillStyle = PAL[CREAM]; ctx.fillRect(x0 + 22, y0 + 238, x1 - x0 - 42, 1); ctx.restore();
+
+  L('가설', x0 + 22, y0 + 262, 14, PAL[GRAY]);
+  const names = ['H1 조카', 'H2 가사도우미', 'H3 편집자', 'H4 전 동업자'], map = [0, 2, 1, 3];
+  names.forEach((n, i) => {
+    const s = map[i], y = y0 + 292 + i * 30, lead = t > T.verdict && s === 2;
+    const v = t > T.web + BAR ? Math.max(0, Math.min(100, heapShown[s] + jitter() * (s === 1 || s === 3 ? 0.4 : 1))) : 0;
+    L(n, x0 + 22, y, 15, lead ? PAL[RED] : PAL[CREAM], 'left', lead ? 700 : 400);
+    ctx.save(); ctx.globalAlpha = a * 0.18; ctx.fillStyle = PAL[CREAM]; ctx.fillRect(x0 + 170, y - 3, 130, 6);
+    ctx.globalAlpha = a; ctx.fillStyle = lead ? PAL[RED] : PAL[GOLD]; ctx.fillRect(x0 + 170, y - 3, 130 * v / 100, 6); ctx.restore();
+    L(t > T.web + BAR ? (v / 100).toFixed(2) : '—', x1 - 20, y, 15, lead ? PAL[RED] : PAL[CREAM], 'right');
+  });
+  ctx.save(); ctx.globalAlpha = a * 0.25; ctx.fillStyle = PAL[CREAM]; ctx.fillRect(x0 + 22, y0 + 412, x1 - x0 - 42, 1); ctx.restore();
+
+  L('추론 로그', x0 + 22, y0 + 436, 14, PAL[GRAY]);
+  const shown = LOG.filter(l => t >= l[0]).slice(-12);
+  ctx.save(); ctx.beginPath(); ctx.rect(x0 + 10, y0 + 452, x1 - x0 - 20, y1 - y0 - 462); ctx.clip();
+  shown.forEach((l, i) => {
+    const y = y0 + 470 + i * 26, n = Math.floor((t - l[0]) * 70), txt = l[1].slice(0, n);
+    const fade = 0.45 + 0.55 * (i + 1) / shown.length;
+    L((l[2] === 'bad' ? '! ' : '> ') + txt + (n < l[1].length ? '▌' : ''), x0 + 22, y, 13, colOf(l[2]), 'left', l[2] ? 700 : 400, MONO, fade);
+  });
+  ctx.restore();
+}
+
+function render() {
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = `rgba(0,0,0,${playing && t > T.vortex && t < T.title ? 0.2 : 0.42})`;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.save();
+  if (shake > 0.3) { ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= 0.88; }
+  const hudTarget = playing && t > T.traces + 0.3 && t < T.vortex ? 1 : 0;
+  hudA += (hudTarget - hudA) * 0.045;
+  const ease = hudA * hudA * (3 - 2 * hudA), ws = 1 - 0.27 * ease;
+  ctx.translate(26 * ease, (H - H * ws) / 2); ctx.scale(ws, ws);
+  if (brush) {
+    const g = ctx.createRadialGradient(brush.x, brush.y, 0, brush.x, brush.y, 130);
+    g.addColorStop(0, 'rgba(227,181,102,.18)'); g.addColorStop(1, 'rgba(227,181,102,0)');
+    ctx.fillStyle = g; ctx.fillRect(brush.x - 130, brush.y - 130, 260, 260);
+  }
+  ctx.globalCompositeOperation = 'lighter';
+  const sz = (small ? 2.6 : 2.1) / ws * 0.9;
+  for (let c = 0; c < PAL.length; c++) {
+    ctx.fillStyle = PAL[c];
+    for (let i = 0; i < N; i++) {
+      if (COL[i] !== c || A[i] < 0.02) continue;
+      ctx.globalAlpha = A[i];
+      ctx.fillRect(X[i], Y[i], sz, sz);
+    }
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  if (playing) OVER.forEach(o => {
+    if (t < o.from || t > o.to) return;
+    o.fn(Math.min(1, (t - o.from) / 0.5, (o.to - t) / 0.4));
+  });
+  ctx.restore();
+  if (hudA > 0.01) drawHUD(hudA);
+}
+function resize() {
+  const r = stage.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+  stage.style.setProperty('--u', (r.width / W) + 'px');
+}
+new ResizeObserver(resize).observe(stage);
+
+let evPtr = 0;
+function frame(now) {
+  if (playing) {
+    t = (now - startAt) / 1000;
+    while (evPtr < EVENTS_LIST.length && EVENTS_LIST[evPtr].time <= t) EVENTS_LIST[evPtr++].fn();
+    $('prog').style.width = Math.min(100, t / DURATION * 100) + '%';
+    $('clock').textContent = `${fmt(t)} / ${fmt(DURATION)}`;
+  }
+  step(); render();
+  requestAnimationFrame(frame);
+}
+const fmt = s => { s = Math.max(0, Math.min(DURATION, Math.floor(s))); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+/* ================= score (Web Audio, D minor noir) ================= */
+const AU = {ctx: null, on: true, master: null};
+const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+function audioInit() {
+  if (!AU.ctx) { try { AU.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { return null; } }
+  if (AU.ctx.state === 'suspended') AU.ctx.resume();
+  return AU.ctx;
+}
+function score(T0) {
+  const c = AU.ctx; if (!c) return;
+  if (AU.master) { try { AU.master.disconnect(); } catch (_) {} }
+  const master = c.createGain(); master.gain.value = AU.on ? 0.85 : 0; master.connect(c.destination); AU.master = master;
+  const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.connect(master);
+  const verb = c.createConvolver(), ir = c.createBuffer(2, c.sampleRate * 3, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.6); }
+  verb.buffer = ir; const vg = c.createGain(); vg.gain.value = 0.32; verb.connect(vg).connect(comp);
+  const noise = c.createBuffer(1, c.sampleRate, c.sampleRate); { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const out = (node, wet = 0) => { node.connect(comp); if (wet) { const s = c.createGain(); s.gain.value = wet; node.connect(s).connect(verb); } };
+  const at = s => T0 + s;
+
+  const piano = (s, m, v = 0.5, dur = 2.4) => {
+    const g = c.createGain(); out(g, 0.9);
+    [[1, 1], [2, 0.28], [3, 0.08]].forEach(([h, amp]) => {
+      const o = c.createOscillator(); o.type = h === 1 ? 'triangle' : 'sine'; o.frequency.value = mf(m) * h; o.detune.value = (Math.random() - 0.5) * 6;
+      const og = c.createGain(); og.gain.value = amp; o.connect(og).connect(g); o.start(at(s)); o.stop(at(s + dur + 0.1));
+    });
+    g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(0.16 * v, at(s) + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, at(s + dur));
+  };
+  const bass = (s, m, v = 1, dur = BEAT * 0.9) => {
+    const o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'triangle'; o.frequency.value = mf(m); f.type = 'lowpass'; f.frequency.value = 520;
+    o.connect(f).connect(g); out(g, 0.1);
+    g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(0.32 * v, at(s) + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, at(s + dur));
+    o.start(at(s)); o.stop(at(s + dur + 0.05));
+  };
+  const pad = (s, notes, dur, v = 1, cutoff = 700, attack = 1.4) => {
+    const f = c.createBiquadFilter(), g = c.createGain(); f.type = 'lowpass'; f.frequency.value = cutoff; f.connect(g); out(g, 0.8);
+    notes.forEach(m => [-7, 7].forEach(dt => { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mf(m); o.detune.value = dt; o.connect(f); o.start(at(s)); o.stop(at(s + dur + 1.6)); }));
+    g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(0.022 * v, at(s + attack)); g.gain.setValueAtTime(0.022 * v, at(s + dur)); g.gain.exponentialRampToValueAtTime(0.0001, at(s + dur + 1.5));
+  };
+  const hit = (s, freq, type, v, dur, q = 1) => {
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = noise; src.loop = true; f.type = type; f.frequency.value = freq; f.Q.value = q;
+    src.connect(f).connect(g); out(g, 0.15);
+    g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(v, at(s) + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, at(s + dur));
+    src.start(at(s), Math.random() * 0.5); src.stop(at(s + dur + 0.05));
+  };
+  const kick = s => {
+    const o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(115, at(s)); o.frequency.exponentialRampToValueAtTime(42, at(s + 0.28));
+    o.connect(g); out(g); g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(0.5, at(s) + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, at(s + 0.4));
+    o.start(at(s)); o.stop(at(s + 0.45));
+  };
+  const sweep = (s, dur, f0, f1, v) => {
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = noise; src.loop = true; f.type = 'bandpass'; f.Q.value = 3;
+    f.frequency.setValueAtTime(f0, at(s)); f.frequency.exponentialRampToValueAtTime(f1, at(s + dur));
+    src.connect(f).connect(g); out(g, 0.5);
+    g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(v, at(s + dur * 0.7)); g.gain.exponentialRampToValueAtTime(0.0001, at(s + dur));
+    src.start(at(s)); src.stop(at(s + dur + 0.05));
+  };
+  const boom = s => {
+    const o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(64, at(s)); o.frequency.exponentialRampToValueAtTime(30, at(s + 2.5));
+    o.connect(g); out(g, 0.6); g.gain.setValueAtTime(0.0001, at(s)); g.gain.exponentialRampToValueAtTime(0.7, at(s) + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, at(s + 3.2));
+    o.start(at(s)); o.stop(at(s + 3.3)); hit(s, 160, 'lowpass', 0.3, 2.4);
+  };
+
+  const CH = [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]];
+  const WALK = [[38, 41, 45, 48], [34, 38, 41, 45], [31, 34, 38, 41], [33, 37, 40, 43]];
+  const MOTIF = [[0, 74], [1.5, 77], [2, 76], [3, 69], [4.5, 72], [5, 70], [6, 69], [7, 65]];
+  const inBreak = s => s >= T.rebut && s < T.rebut + 2 * BEAT;
+
+  // brush swishes during the reveal
+  for (let s = T.brushOn; s < T.brushOff; s += BEAT * 1.1) sweep(s, BEAT * 0.9, 1800, 5200, 0.05);
+
+  for (let bar = 0; bar < 21; bar++) {
+    const b0 = bar * BAR, ci = bar % 4;
+    if (bar < 14) pad(b0, CH[ci], BAR, bar < 3 ? 0.8 : 1);
+    if (bar >= 3 && bar < 14) WALK[ci].forEach((m, k) => { const s = b0 + k * BEAT; if (!inBreak(s)) bass(s, m, k === 0 ? 1 : 0.8); });
+    if (bar >= 3 && bar < 14) for (let k = 0; k < 4; k++) { const s = b0 + k * BEAT + BEAT * 0.5; if (!inBreak(s)) hit(s, 6500, 'highpass', 0.045, 0.07); if (k % 2 && !inBreak(b0 + k * BEAT)) hit(b0 + k * BEAT, 4200, 'bandpass', 0.05, 0.16, 0.7); }
+    if (bar >= 6 && bar < 9) for (let k = 0; k < 4; k++) hit(b0 + k * BEAT, 2400, 'bandpass', 0.07, 0.025, 8);
+    if (bar >= 9 && bar < 14) [0, 2].forEach(k => { const s = b0 + k * BEAT; if (!inBreak(s)) kick(s); });
+    if ([0, 2, 4, 8, 10, 12].includes(bar)) MOTIF.forEach(([bt, m]) => { if (bar === 2 && bt > 4) return; piano(b0 + bt * BEAT, m, bar < 3 ? 0.55 : 0.4); });
+  }
+  // contradiction: dissonant cluster
+  [73, 74, 75].forEach(m => piano(T.clash, m, 0.7, 1.8)); kick(T.clash); hit(T.clash, 900, 'lowpass', 0.2, 0.5);
+  // rebuttal: snap + low cluster in the break
+  hit(T.rebut, 2600, 'highpass', 0.25, 0.09); [38, 39, 44].forEach(m => piano(T.rebut, m, 0.9, 2.2));
+  piano(T.footprint, 69, 0.5); piano(T.footprint + BEAT * 0.5, 74, 0.5);
+  // verdict: pedal + strings swell
+  bass(T.verdict, 26, 1.1, BAR * 2); bass(T.verdict, 38, 0.6, BAR * 2);
+  pad(T.verdict, [50, 57, 62, 65], BAR, 1.6, 1600, 2.2); pad(T.verdict + BAR, [49, 57, 61, 64], BAR, 1.8, 1900, 1.5);
+  // vortex riser → boom → final chord
+  sweep(T.vortex, BAR * 0.95, 200, 6000, 0.12);
+  boom(T.title);
+  [50, 57, 62, 64, 65, 69].forEach((m, k) => piano(T.title + k * 0.07, m, 0.75, 7));
+  pad(T.title, [38, 50, 57, 64, 65], BAR * 3, 1.4, 1200, 0.8);
+  [[0, 81], [1, 77], [2, 76], [4, 74]].forEach(([bt, m]) => piano(T.title + BAR + bt * BEAT, m, 0.35, 3.2));
+}
+$('soundBtn').addEventListener('click', () => {
+  AU.on = !AU.on;
+  $('soundBtn').setAttribute('aria-pressed', AU.on); $('soundBtn').textContent = AU.on ? '소리 켜짐' : '소리 꺼짐';
+  $('bigPlay').textContent = ($('bigPlay').dataset.replay ? '↻ 다시 보기' : '▶ 티저 재생') + (AU.on ? ' · 소리 켜짐' : '');
+  if (AU.master) AU.master.gain.setTargetAtTime(AU.on ? 0.85 : 0, AU.ctx.currentTime, 0.05);
+});
+
+/* ================= transport ================= */
+function play() {
+  if (!S.word) return;
+  const c = audioInit();
+  const lead = 0.12;
+  if (c) score(c.currentTime + lead);
+  $('title').classList.remove('in'); $('caption').classList.remove('in');
+  $('bigPlay').hidden = true; $('playBtn').textContent = '처음부터';
+  evPtr = 0; t = 0; shake = 0; clashK = 0;
+  brush = {x: 800, y: 120};
+  playing = true; idle = false; startAt = performance.now() + lead * 1000;
+}
+function finish() {
+  playing = false; idle = true; brush = null;
+  $('prog').style.width = '100%'; $('clock').textContent = `${fmt(DURATION)} / ${fmt(DURATION)}`;
+  $('bigPlay').dataset.replay = '1';
+  $('bigPlay').textContent = '↻ 다시 보기' + (AU.on ? ' · 소리 켜짐' : ''); $('bigPlay').hidden = false; $('playBtn').textContent = '다시 보기';
+}
+$('bigPlay').addEventListener('click', play);
+$('playBtn').addEventListener('click', play);
+
+resize(); initAmbient();
+buildShapes().then(() => { posterState(); });
+requestAnimationFrame(frame);
+})();
+</script>
