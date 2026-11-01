@@ -1,0 +1,9 @@
+# True Detective data is for academic research only — do not commit it (see README)
+data/
+# Per-case workspaces contain the puzzle text; only score summaries under results/ are committed
+runs/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

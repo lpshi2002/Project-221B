@@ -1,0 +1,19 @@
+[project]
+name = "b221"
+version = "0.1.0"
+description = "221B — evidence-first detective reasoning harness for Claude Code / Codex"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.7"]
+
+[project.scripts]
+b221 = "b221.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
